@@ -1,10 +1,11 @@
 from typing import List
+from datetime import date
 
-from sqlalchemy import select, insert, delete
+from sqlalchemy import select, insert, delete, and_
 from sqlalchemy.future import Engine
 
 from src.database import tables
-from src.user.models import UserResponseV1, UserAddRequestV1
+from src.user.models import UserResponseV1, UserAddRequestV1, UserStatsResponseV1, StatsResponseV1
 
 
 class UserService:
@@ -51,3 +52,31 @@ class UserService:
         with self._engine.connect() as connection:
             connection.execute(query)
             connection.commit()
+
+    def get_stats_user_by_date(self, id: int, date_from: date, date_to: date) -> UserStatsResponseV1:
+        user_query = select(tables.users).where(tables.users.c.id == id)
+        stats_query = select(tables.stats).where(
+            and_(
+                tables.stats.c.user_id == id,
+                date_from <= tables.stats.c.date <= date_to)
+            ).order_by(tables.stats.c.repo_id, tables.stats.c.date)
+        with self._engine.connect() as connection:
+            user_data = connection.execute(user_query)
+            stats_data = connection.execute(stats_query)
+        user = UserResponseV1(
+            id=user_data['id'],
+            login=user_data['login'],
+            name=user_data['name']
+        )
+        stats = []
+        for data in stats_data:
+            stat = StatsResponseV1(
+                repo_id=data['repo_id'],
+                date=data['date'],
+                stargazers=data['stargazers'],
+                forks=data['forks'],
+                watchers=data['watchers'],
+            )
+            stats.append(stat)
+        return UserStatsResponseV1(user=user, stats=stats)
+
